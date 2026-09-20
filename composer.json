@@ -1,0 +1,26 @@
+{
+  "name": "moonito/php-sdk",
+  "description": "Moonito bot protection and traffic analytics for PHP",
+  "type": "library",
+  "license": "MIT",
+  "homepage": "https://moonito.net",
+  "require": {
+    "php": ">=7.4"
+  },
+  "autoload": {
+    "psr-4": {
+      "Moonito\\": "src/"
+    }
+  },
+  "extra": {
+    "laravel": {
+      "providers": [
+        "Moonito\\Framework\\Laravel\\MoonitoServiceProvider"
+      ]
+    }
+  },
+  "config": {
+    "sort-packages": true
+  },
+  "minimum-stability": "stable"
+}
