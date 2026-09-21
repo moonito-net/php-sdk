@@ -120,7 +120,7 @@ $body = preg_replace("/\n{3,}/", "\n\n", $body);
 $header = <<<HEAD
 <?php
 /**
- * Traffic filtering runtime, version 3.1.0.
+ * Traffic filtering runtime, version 3.2.0.
  *
  * GENERATED FILE. Do not edit.
  * Rebuilt from source; changes made here are lost on the next build.
@@ -140,7 +140,7 @@ file_put_contents($out . '/' . $bundle . '.php', $header . $body);
 $detector = <<<DETECTOR
 <?php
 /**
- * Traffic filtering, version 3.1.0.
+ * Traffic filtering, version 3.2.0.
  *
  * Install: include_once(__DIR__ . '/lib/detector.php'); on the first line of
  * the file you are protecting, before anything is sent to the browser.
