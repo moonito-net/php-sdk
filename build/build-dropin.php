@@ -7,11 +7,32 @@
  * the files by dependency and concatenates them into one file that works on a
  * shared host with FTP and nothing else.
  *
- * Usage: php build/build-dropin.php [output-dir]
+ * Nothing it emits names the vendor. A file called moonito.php full of
+ * Moonito_ classes tells anyone who gets a directory listing exactly which
+ * product is protecting the site and therefore exactly which bypasses to go
+ * and read about. The names below are deliberately dull and are build
+ * parameters, so a customer who wants different ones can have them.
+ *
+ * One thing cannot be hidden and should not be oversold: the API endpoint is
+ * in the generated code, because the library has to know where to call and
+ * burying that would make a support call impossible to answer.
+ *
+ * Usage: php build/build-dropin.php [output-dir] [--bundle=engine] [--prefix=Guard_]
  */
 
 $root = dirname(__DIR__);
-$out = $argv[1] ?? dirname($root) . '/php-lib/lib';
+$args = array_values(array_filter(array_slice($argv, 1), fn ($a) => strpos($a, '--') !== 0));
+$opts = [];
+
+foreach (array_slice($argv, 1) as $arg) {
+    if (preg_match('/^--([a-z]+)=(.+)$/', $arg, $m)) {
+        $opts[$m[1]] = $m[2];
+    }
+}
+
+$out = $args[0] ?? dirname($root) . '/php-lib/lib';
+$bundle = preg_replace('/[^a-z0-9_]/', '', strtolower($opts['bundle'] ?? 'engine'));
+$prefix = preg_replace('/[^A-Za-z0-9_]/', '', $opts['prefix'] ?? 'Guard_');
 
 // Dependency order. Classes must be declared before anything that extends or
 // type-hints them at load time.
@@ -26,6 +47,8 @@ $order = [
     'src/Transport/CurlTransport.php',
     'src/Transport/StreamTransport.php',
     'src/Identity/TokenJar.php',
+    'src/Challenge/PassJar.php',
+    'src/Challenge/Bridge.php',
     'src/Enforcer/Enforcer.php',
     'src/Client.php',
 ];
@@ -36,7 +59,7 @@ foreach ($order as $file) {
     $source = file_get_contents($root . '/' . $file);
 
     if (preg_match('/\b(?:final\s+)?(?:class|interface)\s+([A-Za-z0-9_]+)/', $source, $m)) {
-        $classMap[$m[1]] = 'Moonito_' . $m[1];
+        $classMap[$m[1]] = $prefix . $m[1];
     }
 }
 
@@ -59,14 +82,48 @@ foreach ($order as $file) {
     $body .= "\n" . trim($source) . "\n";
 }
 
-$header = <<<'HEAD'
+/**
+ * Strip every comment from the bundle.
+ *
+ * Two reasons, and the second is the one that was asked for. The file is
+ * generated and marked do-not-edit, so nobody reads it to understand the
+ * code; the package is where the reasoning lives. And the comments are the
+ * only place the vendor's name appears outside the handful of strings that
+ * are protocol and cannot move.
+ *
+ * Done with the tokeniser rather than a regular expression, because "https://"
+ * inside a string looks exactly like the start of a comment to a regex.
+ */
+$stripped = '';
+
+foreach (token_get_all('<?php ' . $body) as $token) {
+    if (is_array($token)) {
+        if ($token[0] === T_COMMENT || $token[0] === T_DOC_COMMENT) {
+            // Keep the newlines a block comment spanned, so line numbers in a
+            // stack trace still point somewhere sensible.
+            $stripped .= str_repeat("\n", substr_count($token[1], "\n"));
+
+            continue;
+        }
+
+        $stripped .= $token[1];
+
+        continue;
+    }
+
+    $stripped .= $token;
+}
+
+$body = preg_replace('/^<\?php /', '', $stripped, 1);
+$body = preg_replace("/\n{3,}/", "\n\n", $body);
+
+$header = <<<HEAD
 <?php
 /**
- * Moonito PHP Library 3.0.0, drop-in edition.
+ * Traffic filtering runtime, version 3.1.0.
  *
  * GENERATED FILE. Do not edit.
- * Built from the moonito/php-sdk Composer package by build/build-dropin.php.
- * Edit the package and rebuild; changes made here are lost on the next build.
+ * Rebuilt from source; changes made here are lost on the next build.
  *
  * Install: include_once(__DIR__ . '/lib/detector.php'); on the first line of
  * the file you are protecting, before anything is sent to the browser.
@@ -78,77 +135,86 @@ if (!is_dir($out)) {
     mkdir($out, 0755, true);
 }
 
-file_put_contents($out . '/moonito.php', $header . $body);
+file_put_contents($out . '/' . $bundle . '.php', $header . $body);
 
-$detector = <<<'DETECTOR'
+$detector = <<<DETECTOR
 <?php
 /**
- * Moonito PHP Library 3.0.0
+ * Traffic filtering, version 3.1.0.
  *
  * Install: include_once(__DIR__ . '/lib/detector.php'); on the first line of
  * the file you are protecting, before anything is sent to the browser.
  *
- * Configuration lives in config.php. Every setting added since 2.0.1 is
- * optional with a safe default, so an older config.php keeps working.
+ * Settings live in config.php. Everything optional already has a safe
+ * default, so a config.php from an older version keeps working untouched.
  */
 
 include_once __DIR__ . '/config.php';
-include_once __DIR__ . '/moonito.php';
+include_once __DIR__ . '/{$bundle}.php';
 
-if (!function_exists('moonito_protect')) {
-    function moonito_protect()
+if (!function_exists('site_protect')) {
+    function site_protect()
     {
-        global $apiPublicKey, $apiSecretKey, $isProtected,
-               $unwantedVisitorTo, $unwantedVisitorAction,
-               $moonitoTimeout, $moonitoConnectTimeout, $moonitoFailMode,
-               $moonitoTrustedProxies, $moonitoCloudflare, $moonitoSkipPaths,
-               $moonitoCacheTtl, $moonitoCacheDir, $moonitoDebugLog,
-               $moonitoChallengeAction, $moonitoIdentityCookie, $moonitoEndpoint;
+        // The five names every existing config.php already uses, plus the
+        // optional ones. All of them are neutral: nothing here says who wrote
+        // the library or who it calls.
+        global \$apiPublicKey, \$apiSecretKey, \$isProtected,
+               \$unwantedVisitorTo, \$unwantedVisitorAction,
+               \$guardTimeout, \$guardConnectTimeout, \$guardFailMode,
+               \$guardTrustedProxies, \$guardCloudflare, \$guardSkipPaths,
+               \$guardCacheTtl, \$guardCacheDir, \$guardDebugLog,
+               \$guardChallengeAction, \$guardIdentityCookie, \$guardEndpoint;
 
-        if (empty($isProtected)) {
+        if (empty(\$isProtected)) {
             return null;
         }
 
+        \$pick = function (\$value, \$fallback) {
+            return isset(\$value) ? \$value : \$fallback;
+        };
+
         try {
-            $config = Moonito_Config::fromArray(array(
-                'public_key' => isset($apiPublicKey) ? $apiPublicKey : '',
-                'secret_key' => isset($apiSecretKey) ? $apiSecretKey : '',
-                'endpoint' => isset($moonitoEndpoint) ? $moonitoEndpoint : 'https://moonito.net',
-                'unwanted_visitor_to' => isset($unwantedVisitorTo) ? $unwantedVisitorTo : '',
-                'unwanted_visitor_action' => isset($unwantedVisitorAction) ? $unwantedVisitorAction : 1,
-                'timeout' => isset($moonitoTimeout) ? $moonitoTimeout : 2.0,
-                'connect_timeout' => isset($moonitoConnectTimeout) ? $moonitoConnectTimeout : 1.0,
-                'fail_mode' => isset($moonitoFailMode) ? $moonitoFailMode : 'open',
-                'trusted_proxies' => isset($moonitoTrustedProxies) ? $moonitoTrustedProxies : array(),
-                'cloudflare' => isset($moonitoCloudflare) ? $moonitoCloudflare : false,
-                'cache_ttl' => isset($moonitoCacheTtl) ? $moonitoCacheTtl : 60,
-                'cache_dir' => isset($moonitoCacheDir) ? $moonitoCacheDir : null,
-                'debug_log' => isset($moonitoDebugLog) ? $moonitoDebugLog : null,
-                'challenge_action' => isset($moonitoChallengeAction) ? $moonitoChallengeAction : 'allow',
-                'identity_cookie' => isset($moonitoIdentityCookie) ? $moonitoIdentityCookie : true,
+            \$config = {$prefix}Config::fromArray(array(
+                'public_key' => isset(\$apiPublicKey) ? \$apiPublicKey : '',
+                'secret_key' => isset(\$apiSecretKey) ? \$apiSecretKey : '',
+                'endpoint' => \$pick(\$guardEndpoint, 'https://moonito.net'),
+                'unwanted_visitor_to' => isset(\$unwantedVisitorTo) ? \$unwantedVisitorTo : '',
+                'unwanted_visitor_action' => isset(\$unwantedVisitorAction) ? \$unwantedVisitorAction : 1,
+                'timeout' => \$pick(\$guardTimeout, 2.0),
+                'connect_timeout' => \$pick(\$guardConnectTimeout, 1.0),
+                'fail_mode' => \$pick(\$guardFailMode, 'open'),
+                'trusted_proxies' => \$pick(\$guardTrustedProxies, array()),
+                'cloudflare' => \$pick(\$guardCloudflare, false),
+                'cache_ttl' => \$pick(\$guardCacheTtl, 60),
+                'cache_dir' => \$pick(\$guardCacheDir, null),
+                'debug_log' => \$pick(\$guardDebugLog, null),
+                'challenge_action' => \$pick(\$guardChallengeAction, 'allow'),
+                'identity_cookie' => \$pick(\$guardIdentityCookie, true),
             ));
 
-            if (isset($moonitoSkipPaths) && is_array($moonitoSkipPaths)) {
-                $config->skipPaths = $moonitoSkipPaths;
+            \$skip = \$pick(\$guardSkipPaths, null);
+
+            if (is_array(\$skip)) {
+                \$config->skipPaths = \$skip;
             }
 
-            $client = new Moonito_Client($config);
+            \$client = new {$prefix}Client(\$config);
 
-            return $client->protect();
-        } catch (\Throwable $e) {
+            return \$client->protect();
+        } catch (\Throwable \$e) {
             // Fail open. A protection outage must not become a site outage.
             return null;
-        } catch (\Exception $e) {
+        } catch (\Exception \$e) {
             return null;
         }
     }
 }
 
-$moonitoDecision = moonito_protect();
+\$siteDecision = site_protect();
 DETECTOR;
 
 file_put_contents($out . '/detector.php', $detector);
 
 echo "Built:\n";
-echo "  " . $out . "/moonito.php  (" . number_format(strlen($header . $body)) . " bytes)\n";
+echo "  " . $out . "/" . $bundle . ".php  (" . number_format(strlen($header . $body)) . " bytes)\n";
 echo "  " . $out . "/detector.php\n";

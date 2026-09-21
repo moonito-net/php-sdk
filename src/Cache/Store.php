@@ -87,7 +87,7 @@ final class Store
 
     private function prefix(string $key): string
     {
-        return 'moonito:' . $key;
+        return 'c:' . $key;
     }
 
     private function path(string $key): string

@@ -135,6 +135,9 @@ final class Config
 
     public function cacheDirectory(): string
     {
-        return $this->cacheDir ?: rtrim(sys_get_temp_dir(), '/') . '/moonito-sdk';
+        // Named for what it holds, not for who wrote it. A directory called
+        // moonito-sdk sitting in /tmp announces the product to anybody with a
+        // shell on the box, which is a free hint nobody needs to give.
+        return $this->cacheDir ?: rtrim(sys_get_temp_dir(), '/') . '/.req-cache';
     }
 }
