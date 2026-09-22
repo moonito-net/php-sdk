@@ -21,8 +21,19 @@ final class CurlTransport implements Transport
 
     public function post(string $url, array $payload, array $headers, float $connectTimeout, float $timeout): array
     {
-        $connectTimeout = max(0.3, min($connectTimeout, 2.0));
-        $timeout = max(0.5, min($timeout, 5.0));
+        // The ceiling stays, because "wait forever" must not be expressible.
+        // It was 2.0/5.0, which silently overrode anyone who configured more
+        // and capped the whole SDK below the point where a slow network still
+        // produces an answer. A check that times out is recorded as "could not
+        // run" and the visitor is let through, so the cap was quietly costing
+        // detection on exactly the connections that needed it most.
+        //
+        // Long waits are affordable here because CircuitBreaker trips after 5
+        // failures in 30 seconds and then short-circuits for 30 to 300, so a
+        // real outage costs a handful of slow requests once, not one per page
+        // view.
+        $connectTimeout = max(0.3, min($connectTimeout, 10.0));
+        $timeout = max(0.5, min($timeout, 30.0));
 
         $curl = curl_init();
 

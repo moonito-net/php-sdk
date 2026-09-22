@@ -6,8 +6,8 @@ return [
     'endpoint' => env('MOONITO_ENDPOINT', 'https://moonito.net'),
     'enabled' => env('MOONITO_ENABLED', true),
 
-    'timeout' => env('MOONITO_TIMEOUT', 2.0),
-    'connect_timeout' => env('MOONITO_CONNECT_TIMEOUT', 1.0),
+    'timeout' => env('MOONITO_TIMEOUT', 15.0),
+    'connect_timeout' => env('MOONITO_CONNECT_TIMEOUT', 5.0),
 
     // Open means a Moonito outage never becomes a site outage.
     'fail_mode' => env('MOONITO_FAIL_MODE', 'open'),

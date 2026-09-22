@@ -27,8 +27,8 @@ final class Config
      * There is no value meaning "wait forever". Version 2.0.1 shipped
      * CURLOPT_TIMEOUT => 0 and a slow API hung every page on the site.
      */
-    public $timeout = 2.0;
-    public $connectTimeout = 1.0;
+    public $timeout = 15.0;
+    public $connectTimeout = 5.0;
 
     /**
      * open   on failure the visitor is allowed through, flagged as degraded

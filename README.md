@@ -93,8 +93,8 @@ Every setting has a default that is safe, meaning it never makes your site slowe
 | Setting | Default | What it does |
 |---|---|---|
 | `public_key`, `secret_key` | none | From your Moonito dashboard |
-| `timeout` | `2.0` | Seconds. There is no value meaning "wait forever" |
-| `connect_timeout` | `1.0` | Seconds |
+| `timeout` | `15.0` | Seconds, capped at 30. There is no value meaning "wait forever" |
+| `connect_timeout` | `5.0` | Seconds, capped at 10 |
 | `fail_mode` | `open` | `open` lets visitors through when the check cannot run. `closed` blocks them |
 | `cache_ttl` | `60` | Seconds an allow may be reused. Blocks are never cached |
 | `trusted_proxies` | `[]` | Proxies whose forwarded headers may be believed |
