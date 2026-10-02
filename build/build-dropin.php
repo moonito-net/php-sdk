@@ -120,7 +120,7 @@ $body = preg_replace("/\n{3,}/", "\n\n", $body);
 $header = <<<HEAD
 <?php
 /**
- * Traffic filtering runtime, version 3.2.0.
+ * Traffic filtering runtime, version 3.4.0.
  *
  * GENERATED FILE. Do not edit.
  * Rebuilt from source; changes made here are lost on the next build.
@@ -140,7 +140,7 @@ file_put_contents($out . '/' . $bundle . '.php', $header . $body);
 $detector = <<<DETECTOR
 <?php
 /**
- * Traffic filtering, version 3.2.0.
+ * Traffic filtering, version 3.4.0.
  *
  * Install: include_once(__DIR__ . '/lib/detector.php'); on the first line of
  * the file you are protecting, before anything is sent to the browser.
@@ -160,8 +160,8 @@ if (!function_exists('site_protect')) {
         // the library or who it calls.
         global \$apiPublicKey, \$apiSecretKey, \$isProtected,
                \$unwantedVisitorTo, \$unwantedVisitorAction,
-               \$guardTimeout, \$guardConnectTimeout, \$guardFailMode,
-               \$guardTrustedProxies, \$guardCloudflare, \$guardSkipPaths,
+               \$guardMaxWait, \$guardFailMode,
+               \$guardTrustedProxies, \$guardSkipPaths,
                \$guardCacheTtl, \$guardCacheDir, \$guardDebugLog,
                \$guardChallengeAction, \$guardIdentityCookie, \$guardEndpoint;
 
@@ -180,11 +180,17 @@ if (!function_exists('site_protect')) {
                 'endpoint' => \$pick(\$guardEndpoint, 'https://moonito.net'),
                 'unwanted_visitor_to' => isset(\$unwantedVisitorTo) ? \$unwantedVisitorTo : '',
                 'unwanted_visitor_action' => isset(\$unwantedVisitorAction) ? \$unwantedVisitorAction : 1,
-                'timeout' => \$pick(\$guardTimeout, 15.0),
-                'connect_timeout' => \$pick(\$guardConnectTimeout, 5.0),
+                // \$guardTimeout and \$guardConnectTimeout are read no more.
+                // 3.2.0 wrote 2.0 and 1.0 into every config.php it shipped, so
+                // honouring them would keep skipping visitors on sites that
+                // only updated detector.php. 0 waits for the API, as 2.0.1 did.
+                'timeout' => \$pick(\$guardMaxWait, 0.0),
+                'connect_timeout' => 10.0,
                 'fail_mode' => \$pick(\$guardFailMode, 'open'),
                 'trusted_proxies' => \$pick(\$guardTrustedProxies, array()),
-                'cloudflare' => \$pick(\$guardCloudflare, false),
+                // Always on: CF-Connecting-IP is only believed from Cloudflare's
+                // own ranges, so it cannot be forged by a direct visitor.
+                'cloudflare' => true,
                 'cache_ttl' => \$pick(\$guardCacheTtl, 60),
                 'cache_dir' => \$pick(\$guardCacheDir, null),
                 'debug_log' => \$pick(\$guardDebugLog, null),

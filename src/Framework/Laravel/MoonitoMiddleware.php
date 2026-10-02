@@ -32,7 +32,7 @@ class MoonitoMiddleware
 
         $response = $next($request);
 
-        return $this->attach($response, $decision);
+        return $this->attach($request, $response, $decision);
     }
 
     protected function block($request, Decision $decision)
@@ -54,27 +54,30 @@ class MoonitoMiddleware
      * Cookies are attached to the response rather than sent with setcookie(),
      * so they survive Laravel's own response handling and testing helpers.
      */
-    protected function attach($response, Decision $decision)
+    protected function attach($request, $response, Decision $decision)
     {
         $cookie = $decision->clientTokenCookie();
 
-        if ($cookie !== null && method_exists($response, 'headers')) {
+        // headers is a property on a Symfony response, not a method, so the
+        // method_exists() check this replaced never passed and the identity
+        // cookie was never set.
+        if ($cookie !== null && $response instanceof \Symfony\Component\HttpFoundation\Response) {
             $response->headers->setCookie(cookie(
                 $cookie['name'],
                 $cookie['value'],
                 (int) ($cookie['max_age'] / 60),
                 '/',
                 null,
-                $response->isSecure ?? true,
+                $request->isSecure(),
                 false,
                 false,
                 'Lax'
             ));
         }
 
-        if ($decision->decisionId() !== null && method_exists($response, 'header')) {
+        if ($decision->decisionId() !== null && $response instanceof \Symfony\Component\HttpFoundation\Response) {
             // Read by the browser sensor when the page head cannot be edited.
-            $response->header('X-Moonito-Ctx', $decision->decisionId() . ':' . $decision->nonce());
+            $response->headers->set('X-Moonito-Ctx', $decision->decisionId() . ':' . $decision->nonce());
         }
 
         return $response;

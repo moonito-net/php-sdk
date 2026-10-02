@@ -93,12 +93,12 @@ Every setting has a default that is safe, meaning it never makes your site slowe
 | Setting | Default | What it does |
 |---|---|---|
 | `public_key`, `secret_key` | none | From your Moonito dashboard |
-| `timeout` | `15.0` | Seconds, capped at 30. There is no value meaning "wait forever" |
-| `connect_timeout` | `5.0` | Seconds, capped at 10 |
+| `timeout` | `0` | Seconds to wait for a decision. `0` waits for as long as the API takes, so no visitor is let through unchecked |
+| `connect_timeout` | `10.0` | Seconds to reach the server. Never cuts into the time the API spends deciding |
 | `fail_mode` | `open` | `open` lets visitors through when the check cannot run. `closed` blocks them |
 | `cache_ttl` | `60` | Seconds an allow may be reused. Blocks are never cached |
 | `trusted_proxies` | `[]` | Proxies whose forwarded headers may be believed |
-| `cloudflare` | `false` | Trust `CF-Connecting-IP` from Cloudflare's published ranges |
+| `cloudflare` | `true` | Trust `CF-Connecting-IP` only from Cloudflare's published ranges, so it cannot be forged |
 | `skip_paths` | assets | Requests that skip the check entirely |
 | `challenge_action` | `allow` | `allow`, `block`, or `challenge`. See below |
 | `unwanted_visitor_to` | `https://google.com` | Where blocked visitors go |
@@ -130,11 +130,10 @@ The default stays `allow` when you upgrade. Turning a scored challenge into some
 
 ## Getting the client IP right
 
-If your site is behind Cloudflare, a load balancer or any reverse proxy, tell the SDK:
+Cloudflare is recognised automatically: `CF-Connecting-IP` is read only when the request arrives from one of Cloudflare's published ranges. If your site is behind a load balancer or another reverse proxy on a public address, tell the SDK:
 
 ```php
-'cloudflare'      => true,
-'trusted_proxies' => ['10.0.0.0/8'],
+'trusted_proxies' => ['203.0.113.10'],
 ```
 
 Without this, the SDK uses the address that actually connected, which is your proxy. With it, forwarded headers are read only from proxies you named, walking the chain right to left. Believing a forwarded header from an untrusted source is how IP filtering gets bypassed, so it is off until you say otherwise.
@@ -143,7 +142,7 @@ Without this, the SDK uses the address that actually connected, which is your pr
 
 Nothing, as far as your visitors are concerned. That is the design goal.
 
-- **The API is slow.** Timeouts are hard capped and cannot be disabled.
+- **The API is slow.** The SDK waits for the answer, so a slow decision is still a decision. Set `timeout` if you would rather serve an unchecked page than a slow one.
 - **The API is down.** A circuit breaker stops trying, so an outage costs nothing per page view instead of a timeout per page view.
 - **Your keys are wrong.** The circuit opens for five minutes rather than hammering the API, and the reason goes to your debug log.
 - **Anything unexpected.** `evaluate()` returns a decision with `isDegraded()` set. It does not throw into your code and it never prints a warning above your doctype.

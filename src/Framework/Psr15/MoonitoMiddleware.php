@@ -3,6 +3,7 @@
 namespace Moonito\Framework\Psr15;
 
 use Moonito\Client;
+use Moonito\Config;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
@@ -21,9 +22,15 @@ final class MoonitoMiddleware implements MiddlewareInterface
     private $onBlock;
     private $skip;
 
-    public function __construct(Client $client, ?callable $onBlock = null, array $skip = [])
+    /**
+     * @param Client|Config $client  a Config is accepted too, as the README shows
+     * @param callable|null $onBlock returns the response for a blocked visitor;
+     *                               null sends the configured unwanted-visitor
+     *                               response directly, so a block always blocks
+     */
+    public function __construct($client, ?callable $onBlock = null, array $skip = [])
     {
-        $this->client = $client;
+        $this->client = $client instanceof Config ? new Client($client) : $client;
         $this->onBlock = $onBlock;
         $this->skip = $skip;
     }
@@ -40,8 +47,15 @@ final class MoonitoMiddleware implements MiddlewareInterface
 
         $decision = $this->client->evaluate($request->getServerParams(), $request->getCookieParams());
 
-        if ($decision->isBlock() && !$decision->isDegraded() && $this->onBlock !== null) {
-            return call_user_func($this->onBlock, $request, $decision);
+        if ($decision->isBlock() && !$decision->isDegraded()) {
+            if ($this->onBlock !== null) {
+                return call_user_func($this->onBlock, $request, $decision);
+            }
+
+            // No handler given. Letting the visitor through here used to be
+            // the silent default, which made the middleware look installed
+            // while blocking nothing.
+            $this->client->enforce($decision);
         }
 
         $response = $handler->handle($request->withAttribute('moonito', $decision));

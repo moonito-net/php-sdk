@@ -22,13 +22,20 @@ final class Config
     public $enabled = true;
 
     /**
-     * Timeouts, in seconds, clamped in Transport.
+     * Timeouts, in seconds.
      *
-     * There is no value meaning "wait forever". Version 2.0.1 shipped
-     * CURLOPT_TIMEOUT => 0 and a slow API hung every page on the site.
+     * timeout is how long to wait for the decision. 0, the default, waits for
+     * as long as the API takes, which is what 2.0.1 did. A check that gives up
+     * early lets the visitor through unchecked, and 3.2.0 shipped a 2 second
+     * cap that did exactly that to every visitor the API took longer on.
+     * Set a number only if you would rather serve an unchecked page than a
+     * slow one.
+     *
+     * connectTimeout only covers reaching the server, never the time the API
+     * spends deciding, so it costs no detection.
      */
-    public $timeout = 15.0;
-    public $connectTimeout = 5.0;
+    public $timeout = 0.0;
+    public $connectTimeout = 10.0;
 
     /**
      * open   on failure the visitor is allowed through, flagged as degraded
@@ -46,7 +53,17 @@ final class Config
      * that is not behind a proxy. Private addresses are handled automatically.
      */
     public $trustedProxies = [];
-    public $cloudflare = false;
+
+    /**
+     * Read CF-Connecting-IP when the request really came from Cloudflare.
+     *
+     * Safe to leave on for every site: the header is only believed when the
+     * connecting address is inside Cloudflare's published ranges, so a visitor
+     * hitting the origin directly cannot forge it. Off, a site behind
+     * Cloudflare reports Cloudflare's own address for every visitor and IP
+     * based blocking stops matching anything.
+     */
+    public $cloudflare = true;
 
     /** Paths that skip the check entirely. Assets are not what gets attacked. */
     public $skipPaths = [

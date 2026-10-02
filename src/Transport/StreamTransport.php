@@ -17,8 +17,9 @@ final class StreamTransport implements Transport
 
     public function post(string $url, array $payload, array $headers, float $connectTimeout, float $timeout): array
     {
-        // Matches CurlTransport's ceiling; see the note there for why it moved.
-        $timeout = max(0.5, min($timeout, 30.0));
+        // A stream context has no "no limit", so 0 becomes ten minutes, which
+        // is longer than any web server lets a page run anyway.
+        $timeout = $timeout <= 0 ? 600.0 : max(0.5, $timeout);
 
         $context = stream_context_create([
             'http' => [
