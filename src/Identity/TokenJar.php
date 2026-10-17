@@ -23,7 +23,7 @@ final class TokenJar
     {
         $value = isset($cookies[self::COOKIE]) ? $cookies[self::COOKIE] : null;
 
-        if (!is_string($value) || $value === '' || strlen($value) > 96) {
+        if (!is_string($value) || $value === '' || strlen($value) > 96 || preg_match('//u', $value) !== 1) {
             return null;
         }
 

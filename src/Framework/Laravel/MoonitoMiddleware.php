@@ -75,9 +75,13 @@ class MoonitoMiddleware
             ));
         }
 
-        if ($decision->decisionId() !== null && $response instanceof \Symfony\Component\HttpFoundation\Response) {
-            // Read by the browser sensor when the page head cannot be edited.
+        if ($decision->decisionId() !== null && $decision->nonce() !== null
+            && $response instanceof \Symfony\Component\HttpFoundation\Response) {
             $response->headers->set('X-Moonito-Ctx', $decision->decisionId() . ':' . $decision->nonce());
+            $response->headers->setCookie(cookie(
+                '__mo_cx', $decision->decisionId() . ':' . $decision->nonce(),
+                2, '/', null, $request->isSecure(), false, false, 'Lax'
+            ));
         }
 
         return $response;

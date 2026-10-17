@@ -26,7 +26,7 @@ use Moonito\Transport\Transport;
  */
 final class Client
 {
-    const VERSION = '3.4.1';
+    const VERSION = '3.4.2';
 
     private $config;
     private $store;
@@ -284,7 +284,13 @@ final class Client
             return '/';
         }
 
-        return substr($uri, 0, 512);
+        return $this->bounded($uri, 512);
+    }
+
+    /** API limits count characters; never cut through a UTF-8 sequence. */
+    private function bounded($value, int $limit): string
+    {
+        return is_string($value) && preg_match('/\A.{0,' . $limit . '}/us', $value, $match) ? $match[0] : '';
     }
 
     private function payload(array $resolved, string $uri, array $server, ?string $token, ?string $pass = null): array
@@ -292,10 +298,10 @@ final class Client
         $payload = [
             'domain' => isset($server['HTTP_HOST']) ? strtolower($server['HTTP_HOST']) : '',
             'ip' => $resolved['ip'],
-            'ua' => isset($server['HTTP_USER_AGENT']) ? $server['HTTP_USER_AGENT'] : '',
-            'events' => $uri,
-            'method' => isset($server['REQUEST_METHOD']) ? $server['REQUEST_METHOD'] : 'GET',
-            'protocol' => isset($server['SERVER_PROTOCOL']) ? $server['SERVER_PROTOCOL'] : null,
+            'ua' => $this->bounded(isset($server['HTTP_USER_AGENT']) ? $server['HTTP_USER_AGENT'] : '', 2048),
+            'events' => $this->bounded($uri, 4096),
+            'method' => $this->bounded(isset($server['REQUEST_METHOD']) ? $server['REQUEST_METHOD'] : 'GET', 16),
+            'protocol' => isset($server['SERVER_PROTOCOL']) ? $this->bounded($server['SERVER_PROTOCOL'], 16) : null,
             'headers' => $this->headers($server),
             'sdk' => 'php/' . self::VERSION,
         ];
@@ -338,7 +344,7 @@ final class Client
                 continue;
             }
 
-            $headers[$name] = substr($value, 0, 2048);
+            $headers[$name] = $this->bounded($value, 2048);
 
             if (count($headers) >= 48) {
                 break;

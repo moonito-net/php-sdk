@@ -45,7 +45,9 @@ final class IpResolver
 
         if ($this->cloudflare) {
             $trusted = array_merge($trusted, CloudflareRanges::all());
-            array_unshift($headers, 'HTTP_CF_CONNECTING_IP');
+            if ($this->inAnyRange($remote, CloudflareRanges::all())) {
+                array_unshift($headers, 'HTTP_CF_CONNECTING_IP');
+            }
         }
 
         $remoteIsTrusted = $this->inAnyRange($remote, $trusted);

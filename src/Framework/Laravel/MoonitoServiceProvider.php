@@ -10,6 +10,11 @@ class MoonitoServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        // These values are signed by the decision service or read by the
+        // browser sensor. Laravel encryption would make them unreadable there.
+        $this->app->resolving(\Illuminate\Cookie\Middleware\EncryptCookies::class, function ($middleware) {
+            $middleware->disableFor(['__mo_ct', '__mo_cx', '__mo_pass']);
+        });
         $this->mergeConfigFrom(__DIR__ . '/config.php', 'moonito');
 
         $this->app->singleton(Client::class, function ($app) {

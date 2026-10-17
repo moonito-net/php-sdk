@@ -66,9 +66,17 @@ final class MoonitoMiddleware implements MiddlewareInterface
             $response = $response->withAddedHeader('Set-Cookie', sprintf(
                 '%s=%s; Max-Age=%d; Path=/; SameSite=Lax',
                 $cookie['name'],
-                $cookie['value'],
+                rawurlencode($cookie['value']),
                 (int) $cookie['max_age']
             ));
+        }
+
+        if ($decision->decisionId() !== null && $decision->nonce() !== null) {
+            $response = $response->withAddedHeader('Set-Cookie',
+                '__mo_cx=' . rawurlencode($decision->decisionId() . ':' . $decision->nonce())
+                . '; Max-Age=120; Path=/; SameSite=Lax'
+                . ($request->getUri()->getScheme() === 'https' ? '; Secure' : '')
+            );
         }
 
         return $response;
