@@ -26,12 +26,37 @@ It is not fine when the thing you are protecting costs you money: a checkout, a 
 ### Composer
 
 ```bash
-composer require moonito/php-sdk
+composer require "moonito/php-sdk:^3.4.1"
 ```
 
 ### Shared hosting, no Composer
 
 Download the release zip, upload the `lib` folder, and add one line to the top of the file you are protecting. No autoloader, no build step. That drop-in is generated from this same source, so it never drifts from the Composer version.
+
+### Upgrade to 3.4.1
+
+This release prevents a failed API credential from opening another client's
+circuit breaker or sharing its cached allow decisions. It also selects the
+file cache correctly when APCu is installed but disabled for the current PHP
+process.
+
+For an existing Composer installation, run:
+
+```bash
+composer require "moonito/php-sdk:^3.4.1"
+composer show moonito/php-sdk
+```
+
+Confirm the installed version is 3.4.1 or newer. Deploy the updated
+`composer.lock` and install dependencies on your hosting as usual. Restart any
+long-running application workers so they load the new code.
+
+For the no-Composer library, download
+[PHP library 3.4.1](https://moonito.net/moonito-php-lib.3.4.1.zip) and replace
+`lib/engine.php` and `lib/detector.php` on your website. Keep your existing
+`lib/config.php`, which contains your keys and settings. The update uses a
+separate cache automatically; you do not need to clear APCu or delete shared
+temporary files.
 
 ## Use it
 
@@ -146,6 +171,10 @@ Nothing, as far as your visitors are concerned. That is the design goal.
 - **The API is down.** A circuit breaker stops trying, so an outage costs nothing per page view instead of a timeout per page view.
 - **Your keys are wrong.** The circuit opens for five minutes rather than hammering the API, and the reason goes to your debug log.
 - **Anything unexpected.** `evaluate()` returns a decision with `isDegraded()` set. It does not throw into your code and it never prints a warning above your doctype.
+
+Cached decisions and circuit breakers are isolated by API endpoint and credentials,
+including when multiple sites share the same temporary directory or APCu pool.
+Updating credentials starts with a fresh cache immediately.
 
 ## Requirements
 

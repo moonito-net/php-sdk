@@ -17,7 +17,7 @@ final class Store
     public function __construct(string $dir)
     {
         $this->dir = rtrim($dir, '/');
-        $this->apcu = function_exists('apcu_fetch') && ini_get('apc.enabled');
+        $this->apcu = function_exists('apcu_enabled') && apcu_enabled();
     }
 
     public function get(string $key)
@@ -87,7 +87,9 @@ final class Store
 
     private function prefix(string $key): string
     {
-        return 'c:' . $key;
+        // APCu is shared across clients and sites in the PHP worker pool.
+        // Preserve the same directory isolation as the file backend.
+        return 'c:' . substr(hash('sha256', $this->dir), 0, 32) . ':' . $key;
     }
 
     private function path(string $key): string

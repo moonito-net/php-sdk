@@ -155,6 +155,15 @@ final class Config
         // Named for what it holds, not for who wrote it. A directory called
         // moonito-sdk sitting in /tmp announces the product to anybody with a
         // shell on the box, which is a free hint nobody needs to give.
-        return $this->cacheDir ?: rtrim(sys_get_temp_dir(), '/') . '/.req-cache';
+        $base = $this->cacheDir ?: rtrim(sys_get_temp_dir(), '/') . '/.req-cache';
+
+        // A bad credential must not open another client's circuit or reuse
+        // its allow decisions. Include the secret so replacing a stale secret
+        // takes effect immediately, even when the public key stays the same.
+        $scope = hash('sha256', json_encode([
+            rtrim($this->endpoint, '/'), $this->publicKey, $this->secretKey,
+        ]));
+
+        return rtrim($base, '/') . '/' . substr($scope, 0, 32);
     }
 }
