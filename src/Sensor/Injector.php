@@ -25,6 +25,9 @@ namespace Moonito\Sensor;
  */
 final class Injector
 {
+    // The relay build the SDK serves itself (SensorScript). VERSION and SRI
+    // describe the published CDN build some sites still paste by hand; the
+    // injector only uses them to recognise such a tag.
     const VERSION = '1.1.1';
     const SRI = 'sha384-/7UZbqrpJUAKrkuftEAXE/7FurwiJ7NUyeokkvYnYClNLTXAvBCAKqo9pKzC1Zkv';
     const SCRIPT_HOST = 'cdn.jsdelivr.net';
@@ -48,6 +51,7 @@ final class Injector
 
     private $state = 'pending';
     private $contextTag = '';
+    private $path = '';
 
     public function __construct(string $publicKey, string $endpoint, ?callable $onBlocked = null)
     {
@@ -89,8 +93,20 @@ final class Injector
      * end. Returns false when the request does not qualify or output has
      * already started (the page head is gone by then).
      */
+    /** The path of the page this injector is adding the sensor to. */
+    public function forPath(string $path): self
+    {
+        $this->path = $path;
+
+        return $this;
+    }
+
     public function start(array $server, string $contextTag = ''): bool
     {
+        if ($this->path === '') {
+            $this->path = Relay::pathOf(isset($server['REQUEST_URI']) ? (string) $server['REQUEST_URI'] : '/');
+        }
+
         if (!self::wantsPage($server) || headers_sent()) {
             return false;
         }
@@ -220,15 +236,13 @@ final class Injector
 
     private function tag(?string $nonce): string
     {
-        $endpoint = $this->endpoint !== ''
-            ? ' data-endpoint="' . htmlspecialchars($this->endpoint, ENT_QUOTES) . '"'
-            : '';
-
+        // Served by this SDK from the page's own URL (Relay): no other host,
+        // no integrity hash needed, nothing that names the service.
         return $this->contextTag
-            . '<script defer src="https://' . self::SCRIPT_HOST . self::SENSOR_PATH . self::VERSION . '/t.js"'
-            . ' integrity="' . self::SRI . '" crossorigin="anonymous"'
+            . '<script defer src="' . htmlspecialchars(Relay::src($this->publicKey, $this->path), ENT_QUOTES) . '"'
             . ' data-key="' . htmlspecialchars($this->publicKey, ENT_QUOTES) . '"'
-            . $endpoint
+            . ' data-p="' . Relay::param($this->publicKey) . '"'
+            . ($this->path !== '' ? ' data-endpoint="' . htmlspecialchars($this->path, ENT_QUOTES) . '"' : '')
             . ($nonce !== null ? ' nonce="' . htmlspecialchars($nonce, ENT_QUOTES) . '"' : '')
             . ' ' . self::MARKER . '></script>';
     }
@@ -268,7 +282,7 @@ final class Injector
 
             $strictDynamic = in_array("'strict-dynamic'", array_map('strtolower', $script), true);
 
-            if ($strictDynamic ? $nonce === null : (!$this->sourcesAllow($script, self::SCRIPT_HOST) && $nonce === null)) {
+            if ($strictDynamic ? $nonce === null : (!$this->allowsSelf($script) && $nonce === null)) {
                 return false;
             }
         }
@@ -276,9 +290,25 @@ final class Injector
         $connect = isset($directives['connect-src']) ? $directives['connect-src']
             : (isset($directives['default-src']) ? $directives['default-src'] : null);
 
-        $apiHost = (string) parse_url($this->endpoint, PHP_URL_HOST);
+        // The sensor only talks to this same site.
+        return $connect === null || $this->allowsSelf($connect);
+    }
 
-        return $connect === null || $this->sourcesAllow($connect, $apiHost);
+    private function allowsSelf(array $sources): bool
+    {
+        foreach ($sources as $source) {
+            $source = strtolower(trim($source, '"'));
+
+            if ($source === "'none'") {
+                return false;
+            }
+
+            if ($source === "'self'" || $source === '*') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function sourcesAllow(array $sources, string $host): bool

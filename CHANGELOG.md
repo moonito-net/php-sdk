@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.6.0
+
+- The browser sensor is served from your own site. Its script, its timing
+  requests and its beacon go to the page's own URL with a query parameter
+  unique to your site (derived from your public key), and the SDK forwards
+  the beacon to Moonito from your server after the browser has its answer.
+  Visitors' browsers never contact another host: ad blockers have nothing to
+  match and visitors never see which service protects the site.
+- The sensor's requests are answered before any decision is asked for, so
+  they cost no API requests and no time: the script is cached for a year,
+  the timing and beacon requests answer 204 immediately.
+- A Content-Security-Policy now only needs 'self' for the sensor.
+- The decision context meta tag is named site-ctx.
+
 ## 3.5.2
 
 - The Laravel middleware no longer sends an `X-Moonito-Ctx` response header.

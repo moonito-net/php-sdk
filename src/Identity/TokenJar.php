@@ -77,7 +77,7 @@ final class TokenJar
         }
 
         return sprintf(
-            '<meta name="moonito-ctx" content="%s">',
+            '<meta name="site-ctx" content="%s">',
             htmlspecialchars($decisionId . ':' . $nonce, ENT_QUOTES)
         );
     }

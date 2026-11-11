@@ -10,6 +10,8 @@ use Moonito\Context\IpResolver;
 use Moonito\Enforcer\Enforcer;
 use Moonito\Identity\TokenJar;
 use Moonito\Sensor\Injector;
+use Moonito\Sensor\Relay;
+use Moonito\Sensor\SensorScript;
 use Moonito\Transport\CurlTransport;
 use Moonito\Transport\StreamTransport;
 use Moonito\Transport\Transport;
@@ -28,7 +30,7 @@ use Moonito\Transport\Transport;
  */
 final class Client
 {
-    const VERSION = '3.5.2';
+    const VERSION = '3.6.0';
 
     private $config;
     private $store;
@@ -88,6 +90,16 @@ final class Client
         // The browser check talks only to this same URL: timing requests and
         // the answers. Both are handled here, before any decision is asked for.
         if ($this->config->enabled && $this->config->isConfigured() && !headers_sent()) {
+            // So does the sensor: its script, its timing and its beacon.
+            $relay = $this->config->injectSensor ? Relay::kind($server, (string) $this->config->publicKey) : null;
+
+            if ($relay !== null) {
+                $this->serveRelay($relay, $server, $relay === 't'
+                    ? (string) file_get_contents('php://input', false, null, 0, Relay::MAX_BEACON + 1)
+                    : '');
+                exit;
+            }
+
             if (CheckPage::isPing($server)) {
                 http_response_code(204);
                 header('Cache-Control: no-store, private');
@@ -308,6 +320,55 @@ final class Client
         });
 
         $injector->start($server, $this->config->emitContext ? $this->contextTag($decision) : '');
+    }
+
+    /**
+     * Answer one of the sensor's own requests (see Sensor\Relay). A beacon is
+     * answered at once and forwarded after the response has gone.
+     */
+    public function serveRelay(string $kind, array $server, string $body = ''): void
+    {
+        if ($kind === 's') {
+            foreach (Relay::scriptHeaders() as $line) {
+                header($line);
+            }
+            echo SensorScript::SOURCE;
+
+            return;
+        }
+
+        http_response_code(204);
+        header('Cache-Control: no-store, private');
+
+        if ($kind === 't') {
+            header('Content-Length: 0');
+            Relay::finishResponse();
+            $this->relayBeacon($server, $body);
+        }
+    }
+
+    /** Forward a sensor beacon to Moonito, server to server. Never throws. */
+    public function relayBeacon(array $server, string $body): void
+    {
+        if ($body === '' || strlen($body) > Relay::MAX_BEACON) {
+            return;
+        }
+
+        try {
+            $this->transport->post(
+                rtrim($this->config->endpoint, '/') . '/api/v2/telemetry/relay',
+                ['ip' => $this->ipResolver->resolve($server)['ip'], 'p' => $body],
+                [
+                    'User-Agent: Moonito-PHP/' . self::VERSION,
+                    'X-Public-Key: ' . $this->config->publicKey,
+                    'X-Secret-Key: ' . $this->config->secretKey,
+                ],
+                1.0,
+                2.0
+            );
+        } catch (\Throwable $e) {
+            $this->log('sensor beacon not forwarded: ' . $e->getMessage());
+        }
     }
 
     /** The site's CSP blocks the sensor: tell Moonito on the next requests. */

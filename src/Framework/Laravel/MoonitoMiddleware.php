@@ -8,6 +8,8 @@ use Moonito\Check\CheckPage;
 use Moonito\Challenge\PassJar;
 use Moonito\Decision;
 use Moonito\Sensor\Injector;
+use Moonito\Sensor\Relay;
+use Moonito\Sensor\SensorScript;
 
 /**
  * Laravel middleware.
@@ -29,6 +31,33 @@ class MoonitoMiddleware
     {
         $server = $request->server->all();
         $cookies = $request->cookies->all();
+
+        // The sensor's own requests: script, timing, beacon. Answered here,
+        // before any decision, so the browser only ever talks to this site.
+        $relay = config('moonito.enabled', true) && config('moonito.inject_sensor', true)
+            ? Relay::kind($server, (string) config('moonito.public_key', '')) : null;
+
+        if ($relay === 's') {
+            $response = response(SensorScript::SOURCE, 200);
+            foreach (Relay::scriptHeaders() as $line) {
+                [$name, $value] = explode(': ', $line, 2);
+                $response->header($name, $value);
+            }
+
+            return $response;
+        }
+
+        if ($relay === 'p' || $relay === 't') {
+            if ($relay === 't') {
+                $client = $this->client;
+                $body = substr((string) $request->getContent(), 0, Relay::MAX_BEACON + 1);
+                app()->terminating(function () use ($client, $server, $body) {
+                    $client->relayBeacon($server, $body);
+                });
+            }
+
+            return response('', 204)->header('Cache-Control', 'no-store, private');
+        }
 
         // The browser check talks only to this same URL.
         if (config('moonito.enabled', true) && CheckPage::isPing($server)) {
@@ -99,6 +128,8 @@ class MoonitoMiddleware
                 $client->rememberSensorBlocked();
             }
         );
+
+        $injector->forPath(Relay::pathOf($request->getBaseUrl() . $request->getPathInfo()));
 
         try {
             $result = $injector->process($content, $lines, $response->getStatusCode());
