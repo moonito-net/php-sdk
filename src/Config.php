@@ -78,17 +78,17 @@ final class Config
     /**
      * What to do when the engine asks for a challenge.
      *
-     *   allow      treat it as an allow and log it. The default, and what
-     *              every install before 3.1 did.
+     *   follow     do what the site owner chose in the dashboard. The
+     *              default since 3.5.0: the setting lives in one place.
+     *   allow      treat it as an allow and log it.
      *   block      treat it as a block.
-     *   challenge  actually show the interstitial.
+     *   challenge  always show the check when one is offered.
      *
-     * The default stays 'allow' on upgrade on purpose. Turning a scored
-     * challenge into a real page interruption changes what a visitor sees, and
-     * that is the site owner's decision to make, not a side effect of taking a
-     * patch release.
+     * Before 3.5.0 the default was 'allow', which quietly outranked the
+     * dashboard. The check now runs on the site's own URL, so following the
+     * dashboard no longer sends anyone to another domain.
      */
-    public $challengeAction = 'allow';
+    public $challengeAction = 'follow';
 
     /** Unwanted visitor handling, unchanged from 2.0.1. */
     public $unwantedVisitorTo = 'https://google.com';
@@ -97,6 +97,13 @@ final class Config
     /** Identity cookie and the context tag the browser sensor reads. */
     public $identityCookie = true;
     public $emitContext = true;
+
+    /**
+     * Add the browser sensor to HTML pages, so the site needs no separate
+     * script tag. On by default; turn it off only if the page already loads
+     * the sensor some other way or must not be modified.
+     */
+    public $injectSensor = true;
 
     /** @var string|null */
     public $debugLog = null;
@@ -126,6 +133,7 @@ final class Config
             'unwanted_visitor_action' => 'unwantedVisitorAction',
             'identity_cookie' => 'identityCookie',
             'emit_context' => 'emitContext',
+            'inject_sensor' => 'injectSensor',
             'debug_log' => 'debugLog',
             'throw_on_error' => 'throwOnError',
         ];

@@ -19,6 +19,7 @@ return [
 
     'cache_ttl' => env('MOONITO_CACHE_TTL', 60),
     'unwanted_visitor_to' => env('MOONITO_UNWANTED_TO', ''),
-    'challenge_action' => env('MOONITO_CHALLENGE_ACTION', 'allow'),
+    'challenge_action' => env('MOONITO_CHALLENGE_ACTION', 'follow'),
+    'inject_sensor' => env('MOONITO_INJECT_SENSOR', true),
     'debug_log' => env('MOONITO_DEBUG_LOG'),
 ];

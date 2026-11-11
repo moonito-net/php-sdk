@@ -50,6 +50,9 @@ $order = [
     'src/Challenge/PassJar.php',
     'src/Challenge/Bridge.php',
     'src/Enforcer/Enforcer.php',
+    'src/Sensor/Injector.php',
+    'src/Check/CheckScript.php',
+    'src/Check/CheckPage.php',
     'src/Client.php',
 ];
 
@@ -58,7 +61,9 @@ $classMap = [];
 foreach ($order as $file) {
     $source = file_get_contents($root . '/' . $file);
 
-    if (preg_match('/\b(?:final\s+)?(?:class|interface)\s+([A-Za-z0-9_]+)/', $source, $m)) {
+    // Anchored to the start of a line: a doc comment mentioning "class" before
+    // the declaration used to win, and Decision shipped unprefixed (3.4.x).
+    if (preg_match('/^(?:final\s+|abstract\s+)?(?:class|interface)\s+([A-Za-z0-9_]+)/m', $source, $m)) {
         $classMap[$m[1]] = $prefix . $m[1];
     }
 }
@@ -120,7 +125,7 @@ $body = preg_replace("/\n{3,}/", "\n\n", $body);
 $header = <<<HEAD
 <?php
 /**
- * Traffic filtering runtime, version 3.4.2.
+ * Traffic filtering runtime, version 3.5.1.
  *
  * GENERATED FILE. Do not edit.
  * Rebuilt from source; changes made here are lost on the next build.
@@ -140,7 +145,7 @@ file_put_contents($out . '/' . $bundle . '.php', $header . $body);
 $detector = <<<DETECTOR
 <?php
 /**
- * Traffic filtering, version 3.4.2.
+ * Traffic filtering, version 3.5.1.
  *
  * Install: include_once(__DIR__ . '/lib/detector.php'); on the first line of
  * the file you are protecting, before anything is sent to the browser.
@@ -163,7 +168,8 @@ if (!function_exists('site_protect')) {
                \$guardMaxWait, \$guardFailMode,
                \$guardTrustedProxies, \$guardSkipPaths,
                \$guardCacheTtl, \$guardCacheDir, \$guardDebugLog,
-               \$guardChallengeAction, \$guardIdentityCookie, \$guardEndpoint;
+               \$guardChallengeAction, \$guardIdentityCookie, \$guardEndpoint,
+               \$guardInjectSensor;
 
         if (empty(\$isProtected)) {
             return null;
@@ -194,8 +200,9 @@ if (!function_exists('site_protect')) {
                 'cache_ttl' => \$pick(\$guardCacheTtl, 60),
                 'cache_dir' => \$pick(\$guardCacheDir, null),
                 'debug_log' => \$pick(\$guardDebugLog, null),
-                'challenge_action' => \$pick(\$guardChallengeAction, 'allow'),
+                'challenge_action' => \$pick(\$guardChallengeAction, 'follow'),
                 'identity_cookie' => \$pick(\$guardIdentityCookie, true),
+                'inject_sensor' => \$pick(\$guardInjectSensor, true),
             ));
 
             \$skip = \$pick(\$guardSkipPaths, null);

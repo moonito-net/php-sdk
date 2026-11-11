@@ -14,6 +14,9 @@ final class Decision
     const CHALLENGE = 'challenge';
     const BLOCK = 'block';
 
+    /** Do what the server decided, as set in the dashboard. The default since 3.5.0. */
+    const FOLLOW = 'follow';
+
     private $action;
     private $score;
     private $confidence;
@@ -24,6 +27,7 @@ final class Decision
     private $nonce;
     private $setClientToken;
     private $challengeUrl;
+    private $check;
 
     private function __construct(string $action, array $raw, bool $degraded = false)
     {
@@ -46,9 +50,22 @@ final class Decision
         $this->challengeUrl = isset($raw['data']['challenge_url']) && is_string($raw['data']['challenge_url'])
             ? $raw['data']['challenge_url']
             : null;
+
+        // The browser check to show on this site's own URL. Meaningful while
+        // the decision is still a challenge, or when the server itself said
+        // allow and still sent one: the owner turned on "Check every new
+        // visitor". A challenge this site turned into an allow carries none.
+        $check = isset($raw['data']['check']) && is_array($raw['data']['check']) ? $raw['data']['check'] : null;
+        $serverSaid = isset($raw['data']['status']['risk']['decision']) ? (string) $raw['data']['status']['risk']['decision'] : null;
+        $wanted = $action === self::CHALLENGE || ($action === self::ALLOW && $serverSaid === self::ALLOW);
+        $this->check = $wanted && $check !== null
+            && isset($check['ticket'], $check['seed'], $check['bits'])
+            && is_string($check['ticket']) && is_string($check['seed'])
+            ? $check
+            : null;
     }
 
-    public static function fromResponse(array $raw, string $challengeAction = self::ALLOW): self
+    public static function fromResponse(array $raw, string $challengeAction = self::FOLLOW): self
     {
         $status = isset($raw['data']['status']) ? $raw['data']['status'] : [];
         $risk = isset($status['risk']) ? $status['risk'] : [];
@@ -62,8 +79,15 @@ final class Decision
 
         // A challenge this SDK cannot render falls back to what the site chose,
         // so a caller never receives a decision it has no way to act on.
-        if ($action === self::CHALLENGE && $challengeAction !== self::CHALLENGE) {
+        // 'follow' keeps whatever the dashboard decided.
+        if ($action === self::CHALLENGE && $challengeAction !== self::CHALLENGE && $challengeAction !== self::FOLLOW) {
             $action = $challengeAction === self::BLOCK ? self::BLOCK : self::ALLOW;
+        }
+
+        // A challenge with neither a check nor a link cannot be shown; treat
+        // it as the visitor being let through, as before.
+        if ($action === self::CHALLENGE && empty($raw['data']['check']) && empty($raw['data']['challenge_url'])) {
+            $action = self::ALLOW;
         }
 
         return new self($action, $raw);
@@ -147,11 +171,18 @@ final class Decision
     }
 
     /** Downgrades a challenge in place. Used to break a redirect loop. */
+    /** The browser check to show, or null. */
+    public function check(): ?array
+    {
+        return $this->check;
+    }
+
     public function withoutChallenge(string $to = self::ALLOW): self
     {
         $clone = clone $this;
         $clone->action = $to;
         $clone->challengeUrl = null;
+        $clone->check = null;
 
         return $clone;
     }

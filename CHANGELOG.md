@@ -1,5 +1,24 @@
 # Changelog
 
+## 3.5.1
+
+- Show the browser check when Moonito allows a visitor but the site owner
+  turned on "Check every new visitor" in the dashboard. The SDK says it can do
+  this with `caps=check1,check2`; older versions are never sent such a check.
+- A check that comes with a challenge this site turned into an allow (for
+  example `challenge_action` set to `allow`) is still ignored.
+
+## 3.5.0
+
+- The browser check runs on the site's own URL. A capable SDK sends
+  `caps=check1` and shows the check page instead of sending the visitor to
+  another domain. Answers are posted back to the same URL and forwarded to
+  Moonito server to server.
+- `challenge_action` defaults to `follow`: do what the dashboard says.
+- The browser sensor is added to HTML pages automatically (`injectSensor`),
+  so one install covers both. It turns itself off when the site's
+  Content-Security-Policy would block it.
+
 ## 3.4.2
 
 - Bound request fields and headers to the decision API limits without splitting

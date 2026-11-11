@@ -5,9 +5,11 @@ namespace Moonito;
 use Moonito\Cache\Store;
 use Moonito\Challenge\Bridge;
 use Moonito\Challenge\PassJar;
+use Moonito\Check\CheckPage;
 use Moonito\Context\IpResolver;
 use Moonito\Enforcer\Enforcer;
 use Moonito\Identity\TokenJar;
+use Moonito\Sensor\Injector;
 use Moonito\Transport\CurlTransport;
 use Moonito\Transport\StreamTransport;
 use Moonito\Transport\Transport;
@@ -26,7 +28,7 @@ use Moonito\Transport\Transport;
  */
 final class Client
 {
-    const VERSION = '3.4.2';
+    const VERSION = '3.5.1';
 
     private $config;
     private $store;
@@ -80,13 +82,35 @@ final class Client
     /** Evaluate, act on a block, and set the cookie. The drop-in path. */
     public function protect(?array $server = null, ?array $cookies = null): Decision
     {
+        $server = $server === null ? $_SERVER : $server;
+        $cookies = $cookies === null ? $_COOKIE : $cookies;
+
+        // The browser check talks only to this same URL: timing requests and
+        // the answers. Both are handled here, before any decision is asked for.
+        if ($this->config->enabled && $this->config->isConfigured() && !headers_sent()) {
+            if (CheckPage::isPing($server)) {
+                http_response_code(204);
+                header('Cache-Control: no-store, private');
+                exit;
+            }
+
+            if (CheckPage::isAnswer($server)) {
+                $this->respondToCheck($server, $cookies, (string) file_get_contents('php://input', false, null, 0, 32768));
+                exit;
+            }
+        }
+
         $decision = $this->evaluate($server, $cookies);
 
-        $this->applySideEffects($decision, $server === null ? $_SERVER : $server);
+        $this->applySideEffects($decision, $server);
+
+        if ($decision->check() !== null) {
+            $decision = $this->showCheck($decision, $server, $cookies);
+        }
 
         if ($decision->isChallenge() && $decision->challengeUrl() !== null
-            && $this->config->challengeAction === Decision::CHALLENGE) {
-            (new Bridge())->render($decision->challengeUrl(), $server === null ? $_SERVER : $server, $_POST);
+            && in_array($this->config->challengeAction, [Decision::CHALLENGE, Decision::FOLLOW], true)) {
+            (new Bridge())->render($decision->challengeUrl(), $server, $_POST);
 
             return $decision;
         }
@@ -95,7 +119,201 @@ final class Client
             $this->enforce($decision);
         }
 
+        $this->startSensor($decision, $server);
+
         return $decision;
+    }
+
+    /**
+     * Shows the check page and stops, unless the visitor failed a check a
+     * moment ago (then the site's unwanted-visitor action applies) or Moonito
+     * could not be reached to verify the last one (then they are let through,
+     * as every other API failure lets them through).
+     */
+    private function showCheck(Decision $decision, array $server, array $cookies): Decision
+    {
+        $next = $this->checkStep($decision, $server, $cookies);
+
+        if ($next !== 'show') {
+            return $decision->withoutChallenge($next === 'block' ? Decision::BLOCK : Decision::ALLOW);
+        }
+
+        if (headers_sent()) {
+            // The page is already half sent; a check cannot be shown cleanly.
+            return $decision->withoutChallenge(Decision::ALLOW);
+        }
+
+        header('HTTP/1.1 200 OK');
+        header('Content-Type: text/html; charset=utf-8');
+        header('Cache-Control: no-store, private');
+        header('X-Robots-Tag: noindex, nofollow');
+        header('Referrer-Policy: no-referrer');
+
+        echo CheckPage::html($decision->check(), $server, $_POST);
+        exit;
+    }
+
+    /**
+     * What to do with a decision that carries a check: 'show' it, 'block'
+     * (the visitor failed one a moment ago, so the unwanted-visitor action
+     * applies) or 'allow' (Moonito could not verify the last one, and like
+     * every other API failure that lets the visitor through for a while).
+     */
+    public function checkStep(Decision $decision, array $server, array $cookies): string
+    {
+        if ($decision->check() === null) {
+            return 'allow';
+        }
+
+        if (!empty($cookies[CheckPage::FAIL_COOKIE])) {
+            return 'block';
+        }
+
+        $ip = $this->ipResolver->resolve($server)['ip'];
+
+        return $ip !== '' && $this->store->get('check-open:' . $ip) ? 'allow' : 'show';
+    }
+
+    /**
+     * The answers from the check page, forwarded to Moonito server to server.
+     *
+     * @return array{json: string, pass: ?string, ttl: int, failed: bool}
+     */
+    public function answerCheck(array $server, array $cookies, string $body): array
+    {
+        $answers = json_decode($body, true);
+        $result = ['pass' => null, 'ttl' => 0, 'failed' => false];
+
+        if (is_array($answers) && isset($answers['t']) && is_string($answers['t'])) {
+            $outcome = $this->verifyCheck($server, $cookies, $answers);
+
+            if (($outcome['outcome'] === 'pass' || $outcome['outcome'] === 'uncertain') && $outcome['pass'] !== null) {
+                $result['pass'] = $outcome['pass'];
+                $result['ttl'] = $outcome['ttl'];
+            } elseif ($outcome['outcome'] === 'fail') {
+                $result['failed'] = true;
+            }
+        }
+
+        // The browser learns only where to go next, never why.
+        $result['json'] = json_encode(['next' => CheckPage::returnUrl($server), 'passed' => $result['pass'] !== null]);
+
+        return $result;
+    }
+
+    /** The drop-in path: answer, set the cookie, and stop. */
+    private function respondToCheck(array $server, array $cookies, string $body): void
+    {
+        $result = $this->answerCheck($server, $cookies, $body);
+        $secure = (!empty($server['HTTPS']) && $server['HTTPS'] !== 'off')
+            || (isset($server['HTTP_X_FORWARDED_PROTO']) && $server['HTTP_X_FORWARDED_PROTO'] === 'https');
+
+        header('Content-Type: application/json');
+        header('Cache-Control: no-store, private');
+
+        if ($result['pass'] !== null) {
+            $this->passes->write($result['pass'], $secure, $result['ttl']);
+        } elseif ($result['failed']) {
+            $this->setFailCookie($secure);
+        }
+
+        echo $result['json'];
+    }
+
+    /** @return array{outcome: string, pass: ?string, ttl: int} */
+    public function verifyCheck(array $server, array $cookies, array $answers): array
+    {
+        $resolved = $this->ipResolver->resolve($server);
+        $token = $this->tokens->read($cookies);
+        $ticket = (string) $answers['t'];
+        unset($answers['t']);
+
+        $payload = [
+            't' => $ticket,
+            'ip' => $resolved['ip'],
+            'ua' => $this->bounded(isset($server['HTTP_USER_AGENT']) ? $server['HTTP_USER_AGENT'] : '', 2048),
+            'answers' => $answers,
+        ];
+
+        if ($token !== null) {
+            $payload['client_token'] = $token;
+        }
+
+        $response = $this->transport->post(
+            rtrim($this->config->endpoint, '/') . '/api/v2/check/verify',
+            $payload,
+            [
+                'User-Agent: Moonito-PHP/' . self::VERSION,
+                'X-Public-Key: ' . $this->config->publicKey,
+                'X-Secret-Key: ' . $this->config->secretKey,
+            ],
+            (float) $this->config->connectTimeout,
+            (float) $this->config->timeout
+        );
+
+        $decoded = $response['ok'] && $response['status'] < 500 ? json_decode($response['body'], true) : null;
+        $outcome = is_array($decoded) && isset($decoded['data']['outcome']) ? (string) $decoded['data']['outcome'] : null;
+
+        if ($outcome === null) {
+            // Moonito could not answer. Fail open for this visitor for a few
+            // minutes, like any other API failure, instead of looping them.
+            $this->log('check could not be verified, letting the visitor through');
+            if ($resolved['ip'] !== '') {
+                $this->store->put('check-open:' . $resolved['ip'], 1, 300);
+            }
+
+            return ['outcome' => 'unverified', 'pass' => null, 'ttl' => 0];
+        }
+
+        return [
+            'outcome' => $outcome,
+            'pass' => isset($decoded['data']['pass']) && is_string($decoded['data']['pass']) ? $decoded['data']['pass'] : null,
+            'ttl' => isset($decoded['data']['pass_ttl']) ? (int) $decoded['data']['pass_ttl'] : 1800,
+        ];
+    }
+
+    private function setFailCookie(bool $secure): void
+    {
+        if (headers_sent()) {
+            return;
+        }
+
+        setcookie(CheckPage::FAIL_COOKIE, '1', [
+            'expires' => time() + 300,
+            'path' => '/',
+            'secure' => $secure,
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+    }
+
+    /**
+     * Add the browser sensor to this page on the way out. Never for a skipped
+     * path, a switched-off or unconfigured install, or a blocked visitor.
+     */
+    private function startSensor(Decision $decision, array $server): void
+    {
+        if (!$this->config->injectSensor || !$this->config->enabled || !$this->config->isConfigured() || $decision->isBlock()) {
+            return;
+        }
+
+        if ($this->shouldSkip(isset($server['REQUEST_URI']) ? (string) $server['REQUEST_URI'] : '/')) {
+            return;
+        }
+
+        $injector = new Injector((string) $this->config->publicKey, (string) $this->config->endpoint, function () {
+            // The page's CSP blocks the sensor. Say so on the next requests,
+            // so Moonito does not read the missing beacons as a bot.
+            $this->rememberSensorBlocked();
+        });
+
+        $injector->start($server, $this->config->emitContext ? $this->contextTag($decision) : '');
+    }
+
+    /** The site's CSP blocks the sensor: tell Moonito on the next requests. */
+    public function rememberSensorBlocked(): void
+    {
+        $this->store->put('sensor-off', 1, 3600);
     }
 
     /** The meta tag the browser sensor reads, or an empty string. */
@@ -304,6 +522,10 @@ final class Client
             'protocol' => isset($server['SERVER_PROTOCOL']) ? $this->bounded($server['SERVER_PROTOCOL'], 16) : null,
             'headers' => $this->headers($server),
             'sdk' => 'php/' . self::VERSION,
+            // Can show the browser check on this site's own URL.
+            // check2: also shows a check that comes with an allow ("Check every
+            // new visitor" in the dashboard).
+            'caps' => 'check1,check2',
         ];
 
         // A path, never a URL. The interstitial builds the return address from
@@ -316,6 +538,10 @@ final class Client
 
         if ($token !== null) {
             $payload['client_token'] = $token;
+        }
+
+        if ($this->store->get('sensor-off')) {
+            $payload['sensor'] = 'off';
         }
 
         // What a naive resolver would have used, when it differs. Evidence for

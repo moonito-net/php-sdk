@@ -26,37 +26,39 @@ It is not fine when the thing you are protecting costs you money: a checkout, a 
 ### Composer
 
 ```bash
-composer require "moonito/php-sdk:^3.4.2"
+composer require "moonito/php-sdk:^3.5.1"
 ```
 
 ### Shared hosting, no Composer
 
 Download the release zip, upload the `lib` folder, and add one line to the top of the file you are protecting. No autoloader, no build step. That drop-in is generated from this same source, so it never drifts from the Composer version.
 
-### Upgrade to 3.4.2
+### Upgrade to 3.5.1
 
-This release prevents malformed cookies or oversized request fields from
-interrupting the API check, tightens Cloudflare header trust behind reverse
-proxies, and delivers correlation cookies to the browser sensor in framework
-integrations. It includes the cache and credential isolation fixes from 3.4.1.
+This release can show a suspicious visitor a short browser check on your own
+site's URL: the page, its script and its requests never leave your domain, and
+most people pass without clicking anything. Whether it is shown follows the
+setting on your Moonito dashboard (`challenge_action` now defaults to
+`follow`; an explicit `allow`, `challenge` or `block` still wins). A form
+submission interrupted by the check is sent again afterwards. The browser
+sensor is also added to your HTML pages automatically (`inject_sensor`, on by
+default). It includes every fix from 3.4.2.
 
 For an existing Composer installation, run:
 
 ```bash
-composer require "moonito/php-sdk:^3.4.2"
+composer require "moonito/php-sdk:^3.5.1"
 composer show moonito/php-sdk
 ```
 
-Confirm the installed version is 3.4.2 or newer. Deploy the updated
+Confirm the installed version is 3.5.1 or newer. Deploy the updated
 `composer.lock` and install dependencies on your hosting as usual. Restart any
 long-running application workers so they load the new code.
 
 For the no-Composer library, download
-[PHP library 3.4.2](https://moonito.net/moonito-php-lib.3.4.2.zip) and replace
+[PHP library 3.5.1](https://moonito.net/moonito-php-lib.3.5.1.zip) and replace
 `lib/engine.php` and `lib/detector.php` on your website. Keep your existing
-`lib/config.php`, which contains your keys and settings. The update uses a
-separate cache automatically; you do not need to clear APCu or delete shared
-temporary files.
+`lib/config.php`, which contains your keys and settings.
 
 ## Use it
 
