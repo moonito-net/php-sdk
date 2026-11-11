@@ -26,14 +26,14 @@ It is not fine when the thing you are protecting costs you money: a checkout, a 
 ### Composer
 
 ```bash
-composer require "moonito/php-sdk:^3.5.1"
+composer require "moonito/php-sdk:^3.5.2"
 ```
 
 ### Shared hosting, no Composer
 
 Download the release zip, upload the `lib` folder, and add one line to the top of the file you are protecting. No autoloader, no build step. That drop-in is generated from this same source, so it never drifts from the Composer version.
 
-### Upgrade to 3.5.1
+### Upgrade to 3.5.2
 
 This release can show a suspicious visitor a short browser check on your own
 site's URL: the page, its script and its requests never leave your domain, and
@@ -47,11 +47,11 @@ default). It includes every fix from 3.4.2.
 For an existing Composer installation, run:
 
 ```bash
-composer require "moonito/php-sdk:^3.5.1"
+composer require "moonito/php-sdk:^3.5.2"
 composer show moonito/php-sdk
 ```
 
-Confirm the installed version is 3.5.1 or newer. Deploy the updated
+Confirm the installed version is 3.5.2 or newer. Deploy the updated
 `composer.lock` and install dependencies on your hosting as usual. Restart any
 long-running application workers so they load the new code.
 

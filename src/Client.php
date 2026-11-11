@@ -28,7 +28,7 @@ use Moonito\Transport\Transport;
  */
 final class Client
 {
-    const VERSION = '3.5.1';
+    const VERSION = '3.5.2';
 
     private $config;
     private $store;

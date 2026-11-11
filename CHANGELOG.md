@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.5.2
+
+- The Laravel middleware no longer sends an `X-Moonito-Ctx` response header.
+  Nothing read it (the browser sensor reads the `__mo_cx` cookie), and it
+  named the service to every visitor who opened their browser's developer
+  tools.
+
 ## 3.5.1
 
 - Show the browser check when Moonito allows a visitor but the site owner
